@@ -8,6 +8,9 @@ Author: Jake
 Date: November 12, 2025
 """
 
+import argparse
+import re
+import sys
 import time
 import pandas as pd
 from pathlib import Path
@@ -174,25 +177,101 @@ def save_to_parquet(df, output_path):
     print(f"✓ Data saved to: {output_path}")
 
 
+def validate_season_format(season):
+    """
+    Validate that the season string follows the correct "YYYY-YY" format.
+    
+    Parameters:
+    -----------
+    season : str
+        Season string to validate
+    
+    Returns:
+    --------
+    str
+        The validated season string
+    
+    Raises:
+    -------
+    argparse.ArgumentTypeError
+        If the season format is invalid
+    """
+    pattern = r'^\d{4}-\d{2}$'
+    if not re.match(pattern, season):
+        raise argparse.ArgumentTypeError(
+            f"Invalid season format: '{season}'. Expected format: 'YYYY-YY' (e.g., '2024-25')"
+        )
+    
+    # Additional validation: check that years are consecutive
+    years = season.split('-')
+    start_year = int(years[0])
+    end_year_short = int(years[1])
+    expected_end = start_year % 100 + 1
+    
+    if end_year_short != expected_end:
+        raise argparse.ArgumentTypeError(
+            f"Invalid season: '{season}'. Years must be consecutive (e.g., '2024-25', not '2024-26')"
+        )
+    
+    return season
+
+
+def parse_arguments():
+    """
+    Parse command-line arguments.
+    
+    Returns:
+    --------
+    argparse.Namespace
+        Parsed arguments
+    """
+    parser = argparse.ArgumentParser(
+        description='Fetch NBA three-point shot data for a given season',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python scripts/fetch_data.py
+  python scripts/fetch_data.py --season "2023-24"
+  python scripts/fetch_data.py --season "2021-22"
+        """
+    )
+    
+    parser.add_argument(
+        '--season',
+        type=validate_season_format,
+        default='2024-25',
+        help='NBA season in format "YYYY-YY" (default: 2024-25)'
+    )
+    
+    return parser.parse_args()
+
+
 def main():
     """
     Main execution function.
     """
-    # Configuration
-    SEASON = "2022-23"
-    OUTPUT_PATH = Path(__file__).parent.parent / "data" / "raw" / "nba_3pt_2022_23.parquet"
+    # Parse command-line arguments
+    args = parse_arguments()
+    season = args.season
+    
+    # Print season banner
+    print(f"\n🏀 Fetching three-point data for {season} season...\n")
+    
+    # Generate output filename from season (e.g., "2024-25" -> "nba_3pt_2024_25.parquet")
+    season_filename = season.replace('-', '_')
+    output_path = Path(__file__).parent.parent / "data" / "raw" / f"nba_3pt_{season_filename}.parquet"
     
     # Fetch the data
-    three_point_df = fetch_three_point_data(season=SEASON)
+    three_point_df = fetch_three_point_data(season=season)
     
     # Save to Parquet if data was collected
     if not three_point_df.empty:
-        save_to_parquet(three_point_df, OUTPUT_PATH)
+        save_to_parquet(three_point_df, output_path)
         
         print(f"\n{'='*60}")
         print(f"Pipeline Complete!")
         print(f"Total 3-point attempts collected: {len(three_point_df):,}")
-        print(f"Output file: {OUTPUT_PATH}")
+        print(f"Output file: {output_path}")
         print(f"{'='*60}\n")
     else:
         print("\n⚠️  No data to save.")
